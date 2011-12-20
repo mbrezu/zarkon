@@ -1,0 +1,15 @@
+;; Object fluxid/
+;; SEMANTICDB Tags save file
+(semanticdb-project-database-file "fluxid/"
+  :tables (list 
+   (semanticdb-table "tcpclient.py"
+    :major-mode 'python-mode
+    :tags '(("time" include nil (dependency-file none) [24 35]) ("sys" include nil (dependency-file none) [36 46]) ("threading" include nil (dependency-file none) [47 63]) ("re" include nil (dependency-file none) [64 73]) ("string" include nil (dependency-file none) [74 87]) ("random" include nil (dependency-file none) [88 101]) ("subprocess" include nil (dependency-file none) [102 119]) ("socket" include nil (dependency-file none) [120 167]) ("USAGE" variable nil nil [170 491]) ("readline" function (:arguments (("sock" variable nil (reparse-symbol function_parameters) [508 512]))) nil [495 706]) ("time_out" variable nil nil [708 722]) ("tcp" function (:arguments (("host" variable nil (reparse-symbol function_parameters) [731 735]) ("port" variable nil (reparse-symbol function_parameters) [737 741]) ("bot_command" variable nil (reparse-symbol function_parameters) [743 754]) ("user" variable nil (reparse-symbol function_parameters) [756 760]) ("password" variable nil (reparse-symbol function_parameters) [762 770]) ("options" variable nil (reparse-symbol function_parameters) [772 779]))) nil [723 3445]) ("check_string" function (:arguments (("pname" variable nil (reparse-symbol function_parameters) [3466 3471]) ("use" variable nil (reparse-symbol function_parameters) [3473 3476]))) nil [3448 3817]) ("main" function nil nil [3819 4556]) ("if" code nil nil [4695 4733]))
+    :file "tcpclient.py"
+    :pointmax 4733
+    )
+   )
+  :file "semantic.cache"
+  :semantic-tag-version "2.0pre4"
+  :semanticdb-version "2.0pre4"
+  )

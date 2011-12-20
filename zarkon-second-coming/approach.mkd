@@ -1,0 +1,292 @@
+-*- markdown -*-
+
+# Overview
+
+Hi, my name is Miron Brezuleanu (mbrezu@gmail.com) and I wrote the
+`zarkon` bot for the Google AI Challenge 2011 (ants). See
+http://aichallenge.org/profile.php?user=331 .
+
+I'm a Common Lisp (CL from now on in this document) newbie always
+looking for opportunities to improve my knowledge of this great
+language, so the existence of the CL starter kit was... too tempting.
+
+I used more than one approach during the contest, but I'll only
+describe the latest one (hopefully the best one too).
+
+# Exploration and Food Gathering
+
+For exploration and food gathering I use an approach similar to the
+one described by `Memetix` (see 'Gravity Wells' topic on the forums,
+http://forums.aichallenge.org/viewtopic.php?f=24&t=2019 ). I was
+expecting to see other people using that approach, but I was surprised
+to see how close his approach was to mine. Some later changes in my
+code were due to experiments based on his ideas.
+
+My first attempt was to 1) start from my hills (to ensure
+accessibility) and look for all 'hotspots' (food, fog, unexplored
+cells, enemy hills) using a breadth first search (BFS from now on) and
+mark each cell on a 'height map' with the influence of each hotspot
+(each cell on the height map contains the sum of influences from all
+hotspots, each hotspot influences a cell based on the hotspots'
+strength and Manhattan distance from hotspot to cell in question) and
+then 2) make all ants try to move as high as possible on the height
+map. The height map was calculated every turn. The BFS was only going
+over cells known to be land (accessible) or food (accessible after the
+food is eaten).
+
+Fog and unknown cells were only considered if they had a 'not fog' or
+'not unknown' neighboring cell (neighbors of a cell are defined as
+reachable by an ant in one turn, starting from the cell). Since this
+meant too many hotspots for fog and unknown cells, I started using a
+multisource BFS for enemy hills, fog and unknown squares (so three BFS
+operations). I also started considering only fog cells that had a non
+fog neighbor and had been 'fog' for the last 20 consecutive turns.
+
+For food, I use a BFS for each food and stop at the first ant (one of
+the things I tried first, dismissed and then tried again since it was
+mentioned by `Memetix` in 'Gravity Wells').
+
+At first my BFS was slow, but I managed to speed it up (basically by
+using a list that knew where its tail was instead of a plain list for
+the queue and making the 'visited' array for BFS much smaller).
+
+One later addition was that I apply the enemy hills, fog and unknown
+hotspots first, then decide which ants will be involved in a fight
+(these ants won't try to climb on the height map since they will haver
+bigger fish to fry), and only then apply the food hotspots and stop at
+the first 'free' ant (as in not occupied with some tactical purpose).
+
+After building the complete height map, I iterate over the enemy ants
+and 'lower' the areas that they could influence during this turn so
+that ants busy with exploration and food gathering don't take any
+chances.
+
+All in all, pretty much the description of 'Gravity Wells' (I came up
+with most of it independently, though). One other thing that I changed
+after reading what `Memetix` said was the way influence of hotspots
+decreased (initially I had tried 1/(d+1)^2, thought that something
+like 1/(d+1)^4 was better, then switched back to 1/(d+1)^2, where d is
+the Manhattan distance between the 'influenced' cell and the hotspot
+cell). After seeing
+http://aichallenge.org/visualizer.php?game=289635&user=331 - I think
+that a larger exponent would have helped me there.
+
+One other important tweak is that I consider my own ants as obstacles
+in the BFS, which means they tend not to overcrowd in a tight tunnels
+(first ants to get there 'block' the tunnel from the point of view of
+other ants) and they also tend to find alternative routes to a hotspot
+(which means that, if possible, they will attack a hill from multiple
+directions).
+
+Pointers to code (functions given as `file\function-name`):
+
+ * `input-parser.lisp\parse-turn` - this is the main driver of the AI;
+ * `main.lisp\do-turn` - this is the 'secondary' driver of the AI,
+   responsible for applying tactical moves and making ants climb the height map;
+ * `input-parser.lisp\find-hotspots` - this identifies all the hotspots;
+ * `input-parser.lisp\apply-basic-hotspots` and
+   `search.lisp\apply-hotspot` build the height map;
+ * `input-parser.lisp\apply-ants-to-map` - this changes the height map
+   to make unsafe cells (cells where an ant might get killed) unattractive/low.
+
+# Combat (Tactics)
+
+The first data structure I use is a 'battle map' which is an array
+holding a list of ants that can attack a given cell during the current
+turn.
+
+The first step is to build the list of cells that the visible enemy
+ants can affect this turn. This is done by iterating:
+
+ * over each enemy ant,
+ * over all five movements (none, south, north, east west),
+ * and for each possible combination of the above doing a small BFS
+   (starting from where the ant would be if it used the current
+   movement, limited by the `attackrange2` parameter), and add the
+   equivalent of a (row col owner direction) list to each reached cell
+   (where row, col, owner and direction are the *original*
+   coordinates, owner code and direction code for the ant).
+
+Then I find out which of my ants could fight this turn, by iterating
+over my ants and possible movements for each ant and seeing if a BFS
+limited by `attackrange2` can reach a 'battle map' cell with a
+non-empty list (therefore affected by an enemy ant).
+
+The next step is to separate these ants into 'clusters' which also
+include the enemy ants they will fight.
+
+Each cluster is then analyzed (smaller clusters first) by enumerating
+all the possible positions and selecting the one with the best
+score. If my cluster has less than three ants, I don't consider
+acceptable any position with losses. The scoring function is described
+in the next section (strategy).
+
+If the cluster is large, then the analysis will be interrupted by a
+wall time cutoff and the best position so far (if any) will be
+used. This means that if I have two or more large clusters, only the
+first will be analyzed (partially).
+
+Under certain conditions (in practice most of the time), there is an
+ant next to each hill, which is a crude way to make sure that my bot
+knows what happens around its own hills.
+
+Pointers to functions involved:
+
+ * most of `battle.lisp` implements this;
+ * the entry point is `battle.lisp\analyze-battles`, called from
+   `input-parser.lisp\parse-turn`.
+ * `battle.lisp\get-battle-map` builds a battle map;
+ * `battle.lisp\get-my-ants-in-battles` finds out which of my ants
+   could fight this turn;
+ * `battle.lisp\find-clusters` and `battle.lisp\find-one-cluster` are
+   responsible with identifying clusters;
+ * `battle.lisp\gen-eval-positions` called from
+   `battle.lisp\analyze-cluster` will try to find the best move for a
+   cluster.
+
+# A Little Strategy
+
+I worked very little on strategy. Basically, what the bot does is look
+at each cluster (based on its center ant - see
+`battle.lisp\get-cluster-center`) and try to pick a 'tactic' for the
+ants in that cluster, which is one of:
+
+ * 'defend' - if we're close (within `view-radius2`^0.5 interpreted as
+   Manhattan distance) to one of my hills OR if my ants in the cluster
+   do not outnumber the enemy ants;
+ * 'explore' - if we don't see any hills (ours or theirs) and we don't
+   outnumber (more than 3x) the enemy in the cluster;
+ * 'explore hard' - if we don't see any hills and we have more than 3x
+   the enemy numbers in the cluster;
+ * 'attack' - if we are closer than `view-radius2`^0.5 * 3 (as Manhattan
+   distance) to an enemy hill;
+ * 'attack hard' - the condition for attack AND we outnumber > 3x the
+   enemy numbers in the cluster.
+
+Tactic choice is implemented in `battle.lisp\get-tactic`.
+
+The scoring function used to evaluate cluster positions values (see
+`battle.lisp\gen-eval-positions`) is based on the chosen tactic. The
+scoring function picks the best position using three sorting keys:
+enemy kills, losses, and height map (from the exploration/food
+section) score of own ants in cluster. Based on the tactic, it uses
+various permutations of these three keys (first key listed has highest
+priority, next keys are used if previous keys yield equal results):
+
+ * 'defend' - try to minimize losses, then maximize enemy kills;
+ * 'explore' - try to maximize the score (position on the
+   exploration/food gathering height map), then minimize losses, then
+   maximize enemy kills;
+ * 'explore-hard' - try to maximize score, enemy kills, then minimize
+   losses;
+ * 'attack' - try to maximize enemy kills, then minimize losses, then
+   maximixe score;
+ * 'attack hard' - try to maximize enemy kills, then maximize score,
+   then minimize losses.
+
+Since the tactical approach is rather dumb (it enumerates the cluster
+positions using a depth-first search - maybe it would be better to try
+something a little more random, `a1k0n` style - see
+http://forums.aichallenge.org/viewtopic.php?t=2044 ), it was important
+to distinguish in a relevant way between positions with the same
+number of kills/losses (in many cases, no kills, no losses because my
+exhaustive search takes a long time to reach deadlier
+positions). Without such a differentiator, two moves where nobody dies
+would be equally likely alternatives, when in fact the alternative
+that 'closes in' on the enemy is better.  Using the height-map score
+proved to be an easy way to choose 'closing in' moves.
+
+The choice of not accepting any losses at all if there are less than 3
+of my ants in a cluster proved a good compromise between
+developing/attacking fast and not throwing ants away in too many 1-1
+exchanges.
+
+In the final days before the deadline I also noticed that the
+different approach for 'defend' and 'attack' made `zarkon` a bot that was
+reasonably prudent and/or aggresive at the right times. However, I
+don't expect such simple tricks to be an adequate competitor for more
+advanced strategies (based on territory control, force concentration
+etc.).
+
+# Some CL notes
+
+(this section is CL specific, if you're not a Lisper it probably makes
+even less sense than the other sections)
+
+As I said, I'm a CL newbie. I worked on various self-assigned homework
+projects, but this contest was the first opportunity to use CL more
+seriously, because it required:
+
+ * good performance (see the 1 second hard turn time limit);
+ * good stability (don't want my bot to crash easily);
+ * an environment that made debugging easy;
+ * fast development (since I want to try out ideas without much effort).
+
+I learned how important some CL optimizations tricks are, but I know I
+missed some obvious things and probably added too many useless
+`(declare (optimize speed))` requests.
+
+Some things I used:
+
+ * the statistical profiler that comes with SBCL - great tool!
+ * declared types for many objects used in tight loops, after adding
+   `(declare (optimize speed))` and being asked about types;
+ * used bit arrays or `(mod 4)` arrays where possible - apparently SBCL
+   packs these very tightly, saving a lot of memory and a lot of GC
+   time;
+ * try not to allocate very much memory;
+ * asked for a GC at the beginning of each turn, so there's not much
+   chance of timing out because a (possibly costly) GC is triggered
+   near the end of the turn; this didn't help as much as changing the
+   array in `search.lisp\look-around` (my BFS implementation) to have
+   `(mod 2)` elements instead of `t` elements - at the beginning I
+   didn't expect to use `look-around` so often and in so many places,
+   so I didn't care about the element type of that array; BFS ended up
+   being quite universal in `zarkon` so improvements to it proved
+   essential;
+ * non-local exits to make sure that I don't run out of time (see
+   `classes.lisp\check-time`, `(catch `finish-turn ...)` blocks and
+   the special variable `main.lisp\*cutoff-time*`); these were very
+   helpful in avoiding timeouts with very little effort; using
+   different values for `*cutoff-time*` at various stages also meant
+   that my bot didn't abort an entire turn, but tried to issue at
+   least some orders;
+ * conditional reader macros (I mean #+/- - what's the right name for
+   these?) to make my codebase easy to configure (for instance,
+   changing from debug version to release version involved only a few
+   changes in `main.lisp`, the same for enabling/disabling various
+   logging features).
+
+Some things I missed:
+
+ * packages - if I remember correctly, the starter kit didn't have any
+   and the entire program didn't seem large enough to make them
+   interesting;
+ * using `defstruct` instead of `defclass` for `*state*`, which I
+   think would have made `terrain.lisp\landp` (and friends) much
+   faster by avoiding the call to the slot accessor (looking at
+   assembler code generated for `defstruct`s and `defclass`es it seems
+   `defstruct`s are significantly faster), but maybe I'm missing
+   something; I believe I could have used `defstruct` in place of
+   `defclass` everywhere, as I didn't really use CLOS;
+ * ... ? .
+
+Maybe some kind Lisper will take a look at my code and suggest
+improvements.
+
+# Epilogue
+
+This was a great competition and a great learning opportunity. Sadly,
+it was also a great time sink and I was lucky to have a very patient
+family and very patient colleagues at work.
+
+I hope my bot will end up in the top 100 bots. Fingers crossed (don't
+know if that will help, there's a rare case where I get a division by
+0, some situations where my first ant gets stuck; besides my bot seems
+pretty stupid overall - especially after reading about the excellent
+ideas other people had).
+
+I wish I could have made a better CL bot (especially after the
+expectations for CL went very high after the last contest won by a CL
+bot). As great as CL is, it isn't magical enough to compensate for my
+dumbness... (something to remember for future language flame wars)

@@ -1,0 +1,8 @@
+1 water
+100 my ants
+101 etc other ants
+200 my dead ants
+201 etc other dead ants
+2 food
+300 my hills
+301 etc other hills
